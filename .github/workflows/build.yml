@@ -1897,6 +1897,21 @@ jobs:
           print(s)
           PY
 
+      - name: Naikkan compileSdk
+        run: |
+          python3 - <<'PY'
+          import re, pathlib
+          for name in ['android/app/build.gradle.kts', 'android/app/build.gradle']:
+              p = pathlib.Path(name)
+              if not p.exists():
+                  continue
+              s = p.read_text()
+              s2 = re.sub(r'compileSdk(?:Version)?\s*=?\s*flutter\.compileSdkVersion', 'compileSdk = 36', s)
+              p.write_text(s2)
+              print(name, 'diubah' if s != s2 else 'tidak berubah')
+              print(s2)
+          PY
+
       - run: flutter pub get
 
       - run: flutter build apk --release
