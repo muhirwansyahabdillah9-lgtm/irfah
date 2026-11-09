@@ -56,6 +56,7 @@ jobs:
 
           import 'pages.dart';
           import 'player_page.dart';
+          import 'splash.dart';
           import 'state.dart';
 
           Future<void> main() async {
@@ -105,7 +106,7 @@ jobs:
                   darkTheme: buildTheme(st, Brightness.dark),
                   themeMode: ThemeMode.system,
                   themeAnimationDuration: const Duration(milliseconds: 700),
-                  home: Shell(st),
+                  home: SplashPage(next: Shell(st)),
                 ),
               );
             }
@@ -122,7 +123,7 @@ jobs:
                 HomePage(st),
                 ExplorePage(st),
                 LibraryPage(st),
-                FavoritesPage(st),
+                MePage(st),
               ];
               Widget nav = NavigationBar(
                 selectedIndex: st.tab,
@@ -131,17 +132,13 @@ jobs:
                   NavigationDestination(
                       icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Beranda'),
                   NavigationDestination(
-                      icon: Icon(Icons.explore_outlined),
-                      selectedIcon: Icon(Icons.explore),
-                      label: 'Jelajahi'),
+                      icon: Icon(Icons.search), selectedIcon: Icon(Icons.search), label: 'Cari'),
                   NavigationDestination(
                       icon: Icon(Icons.library_music_outlined),
                       selectedIcon: Icon(Icons.library_music),
                       label: 'Pustaka'),
                   NavigationDestination(
-                      icon: Icon(Icons.favorite_border),
-                      selectedIcon: Icon(Icons.favorite),
-                      label: 'Disukai'),
+                      icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Kamu'),
                 ],
               );
               if (glass) {
@@ -262,11 +259,11 @@ jobs:
 
             static const _icons = [
               Icons.home_rounded,
-              Icons.explore_rounded,
+              Icons.search_rounded,
               Icons.library_music_rounded,
-              Icons.favorite_rounded,
+              Icons.person_rounded,
             ];
-            static const _labels = ['Beranda', 'Jelajahi', 'Pustaka', 'Disukai'];
+            static const _labels = ['Beranda', 'Cari', 'Pustaka', 'Kamu'];
 
             @override
             Widget build(BuildContext context) {
@@ -573,6 +570,7 @@ jobs:
             List<Song> queue = [];
             List<Song> trending = [];
             Map<String, int> plays = {};
+            List<String> days = [];
             int index = -1;
 
             int sleepMin = 0;
@@ -606,6 +604,7 @@ jobs:
               endless = prefs.getBool('endless') ?? true;
               shuffle = prefs.getBool('shuf') ?? false;
               repeat = prefs.getInt('rep') ?? 0;
+              days = prefs.getStringList('days') ?? [];
               library = _list('lib');
               favs = _list('favs');
               recents = _list('rec');
@@ -707,6 +706,7 @@ jobs:
               }
               if (play) {
                 plays[s.id] = (plays[s.id] ?? 0) + 1;
+                _markToday();
                 _pushRecent(s);
                 unawaited(player.play());
               }
@@ -853,6 +853,30 @@ jobs:
               _saveList('favs', favs);
               notifyListeners();
             }
+
+            String _fmtDay(DateTime d) => d.toIso8601String().substring(0, 10);
+
+            void _markToday() {
+              final t = _fmtDay(DateTime.now());
+              if (!days.contains(t)) {
+                days.add(t);
+                prefs.setStringList('days', days);
+              }
+            }
+
+            /// Jumlah hari berturut-turut mendengarkan (hari ini atau kemarin sebagai awal).
+            int get streak {
+              var d = DateTime.now();
+              if (!days.contains(_fmtDay(d))) d = d.subtract(const Duration(days: 1));
+              int n = 0;
+              while (days.contains(_fmtDay(d))) {
+                n++;
+                d = d.subtract(const Duration(days: 1));
+              }
+              return n;
+            }
+
+            int get totalPlays => plays.values.fold(0, (a, b) => a + b);
 
             List<Song> topSongs() {
               final all = <String, Song>{};
@@ -1035,6 +1059,7 @@ jobs:
 
           import 'package:flutter/material.dart';
 
+          import 'splash.dart' show LogoPainter;
           import 'state.dart';
 
           TextStyle head(AppState st, double size) => TextStyle(
@@ -1289,50 +1314,6 @@ jobs:
             }
           }
 
-          class PlaylistCard extends StatelessWidget {
-            final AppState st;
-            final String name;
-            final List<Song> songs;
-            const PlaylistCard(this.st, this.name, this.songs, {super.key});
-
-            @override
-            Widget build(BuildContext context) {
-              return GestureDetector(
-                onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => SongListPage(st, name, songs))),
-                child: SizedBox(
-                  width: 124,
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(st.style == 'glass' ? 16 : 2),
-                      child: SizedBox(
-                        width: 124,
-                        height: 124,
-                        child: GridView.count(
-                          crossAxisCount: 2,
-                          physics: const NeverScrollableScrollPhysics(),
-                          padding: EdgeInsets.zero,
-                          children: [
-                            for (int k = 0; k < 4; k++)
-                              k < songs.length
-                                  ? Cover(s: songs[k], size: 62, radius: 0)
-                                  : Container(color: Colors.white12),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    Text('${songs.length} lagu', style: const TextStyle(fontSize: 12)),
-                  ]),
-                ),
-              );
-            }
-          }
-
           Widget rail(int count, Widget Function(int) item) => SizedBox(
                 height: 178,
                 child: ListView.separated(
@@ -1389,9 +1370,64 @@ jobs:
           }
 
           // ---------------------------------------------------------------- Beranda
+          const _moods = [
+            ['Bersantai', 'chillout'],
+            ['Tidur', 'ambient'],
+            ['Senang', 'happy'],
+            ['Sedih', 'sad'],
+            ['Romansa', 'romantic'],
+          ];
+
+          class StreakCard extends StatelessWidget {
+            final AppState st;
+            const StreakCard(this.st, {super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              return Glass(
+                st: st,
+                child: Row(children: [
+                  const Icon(Icons.local_fire_department, color: Colors.orange, size: 40),
+                  const SizedBox(width: 12),
+                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${st.streak} hari berturut-turut',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                    const Text('Percikan', style: TextStyle(fontSize: 12)),
+                  ]),
+                ]),
+              );
+            }
+          }
+
           class HomePage extends StatelessWidget {
             final AppState st;
             const HomePage(this.st, {super.key});
+
+            Widget _tile(BuildContext context, List<Song> l, int i) {
+              final g = st.style == 'glass';
+              return InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => st.playQueue(l, i),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: g
+                        ? Colors.white.withAlpha(24)
+                        : Theme.of(context).colorScheme.primary.withAlpha(16),
+                    borderRadius: BorderRadius.circular(g ? 12 : 3),
+                  ),
+                  child: Row(children: [
+                    Cover(s: l[i], size: 44, radius: g ? 12 : 3),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(l[i].title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    ),
+                  ]),
+                ),
+              );
+            }
 
             @override
             Widget build(BuildContext context) {
@@ -1403,94 +1439,94 @@ jobs:
                       : h < 19
                           ? 'Selamat sore'
                           : 'Selamat malam';
-
               final seen = <String>{};
               final quick = <Song>[];
-              for (final s in [...st.topSongs(), ...st.recents, ...st.favs, ...st.library]) {
+              for (final s in [...st.topSongs(), ...st.recents, ...st.favs, ...st.library, ...st.trending]) {
                 if (seen.add(s.id)) quick.add(s);
               }
-              final quickList = quick.isNotEmpty ? quick.take(12).toList() : st.trending.take(12).toList();
-
-              final all = <String, Song>{};
-              for (final s in [...st.library, ...st.favs, ...st.recents]) {
-                all[s.id] = s;
-              }
-              final random = all.values.toList()..shuffle(Random(all.length));
-              final lists = <MapEntry<String, List<Song>>>[
-                MapEntry('Disukai', st.favs),
-                MapEntry('Terakhir diputar', st.recents),
-                MapEntry('Paling sering', st.topSongs()),
-                MapEntry('Lagu di HP', st.library),
-                MapEntry('Acak untukmu', random.take(20).toList()),
-              ].where((e) => e.value.isNotEmpty).toList();
-
-              final empty = quickList.isEmpty && lists.isEmpty;
+              final grid = quick.take(6).toList();
+              final more = quick.skip(6).take(10).toList();
+              final cont = st.recents.isNotEmpty ? st.recents : st.trending;
 
               return ListView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                 children: [
-                  Text(greet.toUpperCase(),
-                      style: const TextStyle(letterSpacing: 2, fontSize: 12)),
-                  const SizedBox(height: 2),
-                  Text('Beranda', style: head(st, 40)),
-                  const SizedBox(height: 14),
-                  TextField(
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.search),
-                      hintText: 'Cari lagu, artis, album',
-                      filled: true,
-                      fillColor: st.style == 'glass' ? Colors.white.withAlpha(30) : null,
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
-                    ),
-                    onSubmitted: (v) {
-                      st.search(q: v);
-                      st.setTab(1);
-                    },
-                  ),
-                  if (empty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 24),
-                      child: Panel(
-                        st: st,
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text('Selamat datang di Irfah', style: head(st, 20)),
-                          const SizedBox(height: 8),
-                          const Text(
-                              'Belum ada lagu. Tambahkan lagu dari HP, atau isi Jamendo Client ID di Pengaturan untuk membuka ribuan lagu gratis yang legal.'),
-                          const SizedBox(height: 12),
-                          Wrap(spacing: 8, children: [
-                            FilledButton.icon(
-                                onPressed: st.importLocal,
-                                icon: const Icon(Icons.library_add),
-                                label: const Text('Tambah lagu dari HP')),
-                            OutlinedButton(
-                                onPressed: () => Navigator.of(context).push(
-                                    MaterialPageRoute(builder: (_) => SettingsPage(st))),
-                                child: const Text('Pengaturan')),
-                          ]),
+                  Text(greet, style: head(st, 32)),
+                  const SizedBox(height: 12),
+                  if (grid.isEmpty)
+                    Panel(
+                      st: st,
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Selamat datang di Irfah', style: head(st, 20)),
+                        const SizedBox(height: 8),
+                        const Text(
+                            'Belum ada lagu. Tambahkan lagu dari HP, atau isi Jamendo Client ID di Pengaturan untuk membuka lagu gratis yang legal.'),
+                        const SizedBox(height: 12),
+                        Wrap(spacing: 8, children: [
+                          FilledButton.icon(
+                              onPressed: st.importLocal,
+                              icon: const Icon(Icons.library_add),
+                              label: const Text('Tambah lagu dari HP')),
+                          OutlinedButton(
+                              onPressed: () => Navigator.of(context)
+                                  .push(MaterialPageRoute(builder: (_) => SettingsPage(st))),
+                              child: const Text('Pengaturan')),
                         ]),
-                      ),
+                      ]),
+                    )
+                  else
+                    GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                      childAspectRatio: 3.0,
+                      children: [for (int i = 0; i < grid.length; i++) _tile(context, grid, i)],
                     ),
-                  if (quickList.isNotEmpty) ...[
-                    SectionTitle(st, quick.isNotEmpty ? 'Pilihan cepat' : 'Sedang populer'),
-                    rail(quickList.length, (i) => SongCard(st, quickList, i)),
+                  const SizedBox(height: 12),
+                  StreakCard(st),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 40,
+                    child: ListView(scrollDirection: Axis.horizontal, children: [
+                      for (final m in _moods)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ActionChip(
+                            label: Text(m[0]),
+                            onPressed: () {
+                              st.search(tag: m[1]);
+                              st.setTab(1);
+                            },
+                          ),
+                        ),
+                    ]),
+                  ),
+                  if (cont.isNotEmpty) ...[
+                    SectionTitle(st, 'Lanjutkan'),
+                    rail(cont.length > 12 ? 12 : cont.length, (i) => SongCard(st, cont, i)),
                   ],
-                  if (lists.isNotEmpty) ...[
-                    SectionTitle(st, 'Playlist untukmu'),
-                    rail(lists.length, (i) => PlaylistCard(st, lists[i].key, lists[i].value)),
-                  ],
-                  if (quick.isNotEmpty && st.trending.isNotEmpty) ...[
-                    SectionTitle(st, 'Populer di Jamendo'),
-                    rail(st.trending.length, (i) => SongCard(st, st.trending, i)),
+                  if (more.isNotEmpty) ...[
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      SectionTitle(st, 'Pilihan cepat'),
+                      TextButton(
+                          onPressed: () => st.playQueue(more, 0), child: const Text('Putar semua')),
+                    ]),
+                    Glass(
+                      st: st,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Column(children: [
+                        for (int i = 0; i < more.length; i++) SongTile(st, more, i),
+                      ]),
+                    ),
                   ],
                 ],
               );
             }
           }
 
-          // ---------------------------------------------------------------- Jelajahi
+          // ---------------------------------------------------------------- Cari
           const _tags = [
             ['Pop', 'pop'],
             ['Rock', 'rock'],
@@ -1511,13 +1547,13 @@ jobs:
 
           class _ExploreState extends State<ExplorePage> {
             late final TextEditingController c = TextEditingController(text: widget.st.query);
+            bool online = true;
 
             @override
             void initState() {
               super.initState();
-              if (widget.st.trending.isEmpty && widget.st.jamendoId.isNotEmpty) {
-                widget.st.loadTrending();
-              }
+              final st = widget.st;
+              if (st.trending.isEmpty && st.jamendoId.isNotEmpty) st.loadTrending();
             }
 
             @override
@@ -1530,73 +1566,97 @@ jobs:
             Widget build(BuildContext context) {
               final st = widget.st;
               final q = st.query.trim().toLowerCase();
-              final local = q.isEmpty
-                  ? <Song>[]
-                  : [...st.library, ...st.favs]
-                      .where((s) => '${s.title} ${s.artist} ${s.album}'.toLowerCase().contains(q))
-                      .toList();
-              final showResults = st.results.isNotEmpty || q.isNotEmpty || st.activeTag != null;
-              final remote = showResults ? st.results : st.trending;
+              final searching = q.isNotEmpty || st.activeTag != null;
+              final device = [...st.library, ...st.favs]
+                  .where((s) => '${s.title} ${s.artist}'.toLowerCase().contains(q))
+                  .toList();
+              final list = online ? (searching ? st.results : st.trending) : device;
+              final title = online ? (searching ? 'Hasil' : 'Sedang populer') : 'Di perangkat';
 
               return ListView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                 children: [
-                  Text('Jelajahi', style: head(st, 40)),
+                  Text('Cari', style: head(st, 36)),
                   const SizedBox(height: 12),
                   TextField(
                     controller: c,
                     textInputAction: TextInputAction.search,
                     decoration: InputDecoration(
                       prefixIcon: const Icon(Icons.search),
-                      hintText: 'Cari judul atau artis',
+                      hintText: online ? 'Cari lagu, artis, album' : 'Cari di perangkat',
                       filled: true,
                       fillColor: st.style == 'glass' ? Colors.white.withAlpha(30) : null,
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
                     ),
-                    onSubmitted: (v) => st.search(q: v),
+                    onSubmitted: (v) {
+                      if (online) {
+                        st.search(q: v);
+                      } else {
+                        st.query = v;
+                        setState(() {});
+                      }
+                    },
                   ),
                   const SizedBox(height: 10),
-                  Wrap(spacing: 8, children: [
-                    for (final t in _tags)
-                      ChoiceChip(
-                        label: Text(t[0]),
-                        selected: st.activeTag == t[1],
-                        onSelected: (_) {
-                          c.clear();
-                          st.search(tag: t[1]);
-                        },
-                      ),
-                  ]),
-                  if (st.jamendoId.isEmpty)
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(value: true, label: Text('Online')),
+                      ButtonSegment(value: false, label: Text('Perangkat')),
+                    ],
+                    selected: {online},
+                    onSelectionChanged: (s) => setState(() => online = s.first),
+                  ),
+                  if (online) ...[
+                    const SizedBox(height: 10),
+                    Wrap(spacing: 8, children: [
+                      for (final t in _tags)
+                        ChoiceChip(
+                          label: Text(t[0]),
+                          selected: st.activeTag == t[1],
+                          onSelected: (_) {
+                            c.clear();
+                            st.search(tag: t[1]);
+                          },
+                        ),
+                    ]),
+                  ],
+                  if (online && st.jamendoId.isEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 16),
                       child: Panel(
                         st: st,
                         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           const Text(
-                              'Katalog online memakai Jamendo, layanan musik berlisensi bebas. Isi Client ID gratis di Pengaturan untuk mengaktifkannya.'),
+                              'Katalog online memakai Jamendo (musik berlisensi bebas). Isi Client ID gratis di Pengaturan untuk mengaktifkannya.'),
                           const SizedBox(height: 10),
                           FilledButton(
-                              onPressed: () => Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => SettingsPage(st))),
+                              onPressed: () => Navigator.of(context)
+                                  .push(MaterialPageRoute(builder: (_) => SettingsPage(st))),
                               child: const Text('Buka Pengaturan')),
                         ]),
                       ),
                     ),
-                  if (st.searching)
+                  if (online && st.searching)
                     const Padding(
                         padding: EdgeInsets.all(24),
                         child: Center(child: CircularProgressIndicator())),
-                  if (st.exploreMsg.isNotEmpty)
+                  if (online && st.exploreMsg.isNotEmpty)
                     Padding(padding: const EdgeInsets.only(top: 12), child: Text(st.exploreMsg)),
-                  if (local.isNotEmpty) ...[
-                    SectionTitle(st, 'Di HP-mu'),
-                    if (local.isNotEmpty) Glass(st: st, padding: const EdgeInsets.symmetric(horizontal: 12), child: Column(children: [for (int i = 0; i < local.length; i++) SongTile(st, local, i)])),
+                  if (!searching && online && st.recents.isNotEmpty) ...[
+                    SectionTitle(st, 'Terakhir diputar'),
+                    rail(st.recents.length > 10 ? 10 : st.recents.length,
+                        (i) => SongCard(st, st.recents, i)),
                   ],
-                  if (remote.isNotEmpty) ...[
-                    SectionTitle(st, showResults ? 'Hasil Jamendo' : 'Sedang populer'),
-                    if (remote.isNotEmpty) Glass(st: st, padding: const EdgeInsets.symmetric(horizontal: 12), child: Column(children: [for (int i = 0; i < remote.length; i++) SongTile(st, remote, i)])),
+                  if (list.isNotEmpty) ...[
+                    SectionTitle(st, title),
+                    Glass(
+                      st: st,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Column(children: [
+                        for (int i = 0; i < list.length; i++) SongTile(st, list, i),
+                      ]),
+                    ),
                   ],
                 ],
               );
@@ -1604,76 +1664,176 @@ jobs:
           }
 
           // ---------------------------------------------------------------- Pustaka
-          class LibraryPage extends StatefulWidget {
+          class _Col {
+            final String name;
+            final IconData icon;
+            final List<Song> songs;
+            const _Col(this.name, this.icon, this.songs);
+          }
+
+          class LibraryPage extends StatelessWidget {
             final AppState st;
             const LibraryPage(this.st, {super.key});
 
             @override
-            State<LibraryPage> createState() => _LibraryState();
-          }
-
-          class _LibraryState extends State<LibraryPage> {
-            String f = '';
-
-            @override
             Widget build(BuildContext context) {
-              final st = widget.st;
-              final list = st.library
-                  .where((s) => '${s.title} ${s.artist} ${s.album}'.toLowerCase().contains(f.toLowerCase()))
-                  .toList();
+              final dl = st.library.where((s) => s.id.startsWith('dl:')).toList();
+              final dev = st.library.where((s) => !s.id.startsWith('dl:')).toList();
+              final cols = [
+                _Col('Disukai', Icons.favorite, st.favs),
+                _Col('Terakhir diputar', Icons.history, st.recents),
+                _Col('Paling sering diputar', Icons.trending_up, st.topSongs()),
+                _Col('Diunduh', Icons.download_done, dl),
+                _Col('Di perangkat', Icons.phone_android, dev),
+              ];
               return ListView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                 children: [
-                  Text('Pustaka', style: head(st, 40)),
-                  const SizedBox(height: 4),
-                  Text('${st.library.length} lagu tersimpan di HP, bisa diputar tanpa internet'),
+                  Text('Pustaka', style: head(st, 36)),
                   const SizedBox(height: 12),
                   FilledButton.tonalIcon(
                     onPressed: st.importLocal,
                     icon: const Icon(Icons.library_add),
                     label: const Text('Tambah lagu dari HP'),
                   ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    decoration: InputDecoration(
-                      prefixIcon: const Icon(Icons.search),
-                      hintText: 'Cari di pustaka',
-                      filled: true,
-                      fillColor: st.style == 'glass' ? Colors.white.withAlpha(30) : null,
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
-                    ),
-                    onChanged: (v) => setState(() => f = v),
+                  SectionTitle(st, 'Koleksi'),
+                  Glass(
+                    st: st,
+                    padding: EdgeInsets.zero,
+                    child: Column(children: [
+                      for (final c in cols)
+                        ListTile(
+                          leading: Icon(c.icon),
+                          title: Text(c.name),
+                          subtitle: Text('${c.songs.length} lagu'),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => SongListPage(st, c.name, c.songs))),
+                        ),
+                    ]),
                   ),
-                  const SizedBox(height: 8),
-                  if (list.isEmpty)
-                    const Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Center(child: Text('Belum ada lagu di sini.'))),
-                  if (list.isNotEmpty) Glass(st: st, padding: const EdgeInsets.symmetric(horizontal: 12), child: Column(children: [for (int i = 0; i < list.length; i++) SongTile(st, list, i)])),
                 ],
               );
             }
           }
 
-          // ---------------------------------------------------------------- Disukai
-          class FavoritesPage extends StatelessWidget {
+          // ---------------------------------------------------------------- Kamu
+          class MePage extends StatelessWidget {
             final AppState st;
-            const FavoritesPage(this.st, {super.key});
+            const MePage(this.st, {super.key});
+
+            Widget _row(BuildContext context, IconData i, String t, VoidCallback f) => ListTile(
+                  leading: Icon(i),
+                  title: Text(t),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: f,
+                );
 
             @override
             Widget build(BuildContext context) {
+              void open(Widget w) =>
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => w));
               return ListView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                 children: [
-                  Text('Disukai', style: head(st, 40)),
-                  const SizedBox(height: 8),
-                  if (st.favs.isEmpty)
-                    const Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Center(child: Text('Tekan ♡ pada lagu untuk menyimpannya di sini.'))),
-                  if (st.favs.isNotEmpty) Glass(st: st, padding: const EdgeInsets.symmetric(horizontal: 12), child: Column(children: [for (int i = 0; i < st.favs.length; i++) SongTile(st, st.favs, i)])),
+                  Text('Kamu', style: head(st, 36)),
+                  const SizedBox(height: 12),
+                  StreakCard(st),
+                  const SizedBox(height: 12),
+                  Glass(
+                    st: st,
+                    padding: EdgeInsets.zero,
+                    child: Column(children: [
+                      _row(context, Icons.history, 'Riwayat',
+                          () => open(SongListPage(st, 'Riwayat', st.recents))),
+                      _row(context, Icons.bar_chart, 'Statistik dan recap', () => open(StatsPage(st))),
+                      _row(context, Icons.settings_outlined, 'Pengaturan', () => open(SettingsPage(st))),
+                      _row(
+                        context,
+                        Icons.info_outline,
+                        'Tentang',
+                        () => showAboutDialog(
+                          context: context,
+                          applicationName: 'Irfah',
+                          applicationVersion: '1.0.0',
+                          applicationIcon: SizedBox(
+                              width: 48, height: 48, child: CustomPaint(painter: LogoPainter(1))),
+                          children: const [Text('Pemutar musik untuk HP.')],
+                        ),
+                      ),
+                    ]),
+                  ),
                 ],
+              );
+            }
+          }
+
+          class StatsPage extends StatelessWidget {
+            final AppState st;
+            const StatsPage(this.st, {super.key});
+
+            Widget _num(String v, String l) => Expanded(
+                  child: Column(children: [
+                    Text(v, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                    Text(l, style: const TextStyle(fontSize: 12)),
+                  ]),
+                );
+
+            @override
+            Widget build(BuildContext context) {
+              final all = <String, Song>{
+                for (final s in [...st.library, ...st.favs, ...st.recents]) s.id: s
+              };
+              final top = st.topSongs().take(5).toList();
+              final art = <String, int>{};
+              for (final s in all.values) {
+                if (s.artist.isNotEmpty) art[s.artist] = (art[s.artist] ?? 0) + (st.plays[s.id] ?? 0);
+              }
+              final topArt = art.entries.where((e) => e.value > 0).toList()
+                ..sort((a, b) => b.value.compareTo(a.value));
+
+              return ListenableBuilder(
+                listenable: st,
+                builder: (context, _) => Backdrop(
+                  st: st,
+                  child: Scaffold(
+                    backgroundColor: Colors.transparent,
+                    appBar: AppBar(backgroundColor: Colors.transparent, title: const Text('Statistik')),
+                    body: ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children: [
+                      StreakCard(st),
+                      const SizedBox(height: 12),
+                      Glass(
+                        st: st,
+                        child: Row(children: [
+                          _num('${st.totalPlays}', 'Kali diputar'),
+                          _num('${all.length}', 'Lagu'),
+                          _num('${st.days.length}', 'Hari aktif'),
+                        ]),
+                      ),
+                      SectionTitle(st, 'Lagu teratas'),
+                      Glass(
+                        st: st,
+                        padding: EdgeInsets.zero,
+                        child: Column(children: [
+                          if (top.isEmpty)
+                            const ListTile(title: Text('Belum ada data. Putar beberapa lagu dulu.')),
+                          for (final s in top)
+                            ListTile(title: Text(s.title), trailing: Text('${st.plays[s.id] ?? 0}×')),
+                        ]),
+                      ),
+                      SectionTitle(st, 'Artis teratas'),
+                      Glass(
+                        st: st,
+                        padding: EdgeInsets.zero,
+                        child: Column(children: [
+                          if (topArt.isEmpty) const ListTile(title: Text('Belum ada data.')),
+                          for (final e in topArt.take(5))
+                            ListTile(title: Text(e.key), trailing: Text('${e.value}×')),
+                        ]),
+                      ),
+                    ]),
+                  ),
+                ),
               );
             }
           }
@@ -2051,6 +2211,125 @@ jobs:
                       duration: const Duration(milliseconds: 350), curve: Curves.easeOut);
                 }
               });
+            }
+          }
+          DART_EOF
+          cat > lib/splash.dart <<'DART_EOF'
+          import 'dart:math' as math;
+
+          import 'package:flutter/material.dart';
+
+          double _c01(double v) => v < 0 ? 0 : (v > 1 ? 1 : v);
+
+          /// Logo Irfah: matahari terbit di atas ombak.
+          class LogoPainter extends CustomPainter {
+            final double t;
+            LogoPainter(this.t);
+
+            @override
+            void paint(Canvas c, Size s) {
+              final r = s.width / 2;
+              final disc = Rect.fromCircle(center: Offset(r, r), radius: r);
+              c.drawCircle(Offset(r, r), r, Paint()..color = const Color(0xFF1B2440));
+              c.save();
+              c.clipPath(Path()..addOval(disc));
+              final sunC = Offset(r, r * (1.5 - 0.6 * t));
+              c.drawCircle(
+                sunC,
+                r * .5,
+                Paint()
+                  ..shader = const RadialGradient(
+                          colors: [Color(0xFFFFC857), Color(0xFFFF6B35)])
+                      .createShader(Rect.fromCircle(center: sunC, radius: r * .5)),
+              );
+              final wave = Paint()
+                ..color = const Color(0xFF4FC3F7)
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = r * .08
+                ..strokeCap = StrokeCap.round;
+              for (int i = 0; i < 3; i++) {
+                final y = r * (1.15 + i * .28);
+                final p = Path()..moveTo(0, y);
+                for (double x = 0; x <= s.width; x += 4) {
+                  p.lineTo(x, y + math.sin(x / s.width * 4 * math.pi + t * 6 + i) * r * .05);
+                }
+                c.drawPath(p, wave);
+              }
+              c.restore();
+            }
+
+            @override
+            bool shouldRepaint(LogoPainter o) => o.t != t;
+          }
+
+          /// Animasi pembuka: logo muncul, matahari naik, nama aplikasi memudar masuk.
+          class SplashPage extends StatefulWidget {
+            final Widget next;
+            const SplashPage({super.key, required this.next});
+
+            @override
+            State<SplashPage> createState() => _SplashState();
+          }
+
+          class _SplashState extends State<SplashPage> {
+            @override
+            void initState() {
+              super.initState();
+              Future.delayed(const Duration(milliseconds: 2800), () {
+                if (!mounted) return;
+                Navigator.of(context).pushReplacement(PageRouteBuilder(
+                  transitionDuration: const Duration(milliseconds: 600),
+                  pageBuilder: (_, __, ___) => widget.next,
+                  transitionsBuilder: (_, a, __, child) =>
+                      FadeTransition(opacity: a, child: child),
+                ));
+              });
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                backgroundColor: const Color(0xFF0E1626),
+                body: Center(
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: 1),
+                    duration: const Duration(milliseconds: 2400),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, t, _) => Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Opacity(
+                          opacity: _c01(t * 2),
+                          child: Transform.scale(
+                            scale: .75 + .25 * t,
+                            child: SizedBox(
+                              width: 140,
+                              height: 140,
+                              child: CustomPaint(painter: LogoPainter(t)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 22),
+                        Opacity(
+                          opacity: _c01((t - .5) * 2),
+                          child: const Text('Irfah',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 34,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 3)),
+                        ),
+                        const SizedBox(height: 4),
+                        Opacity(
+                          opacity: _c01((t - .7) * 3),
+                          child: const Text('Pemutar musik untuk HP',
+                              style: TextStyle(color: Colors.white70)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
             }
           }
           DART_EOF
