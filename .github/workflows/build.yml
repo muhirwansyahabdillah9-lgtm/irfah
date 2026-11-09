@@ -148,10 +148,21 @@ jobs:
                 nav = Padding(
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(30),
+                    borderRadius: BorderRadius.circular(34),
                     child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                      child: Container(color: Colors.white.withAlpha(30), child: nav),
+                      filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(34),
+                          border: Border.all(color: Colors.white.withAlpha(80)),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Colors.white.withAlpha(60), Colors.white.withAlpha(18)],
+                          ),
+                        ),
+                        child: LensNav(index: st.tab, onChanged: st.setTab),
+                      ),
                     ),
                   ),
                 );
@@ -196,44 +207,164 @@ jobs:
               final glass = st.style == 'glass';
               return GestureDetector(
                 onTap: () => openPlayer(context, st),
-                child: Container(
-                  margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: glass
-                        ? Colors.white.withAlpha(36)
-                        : Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(glass ? 20 : 4),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                  child: Glass(
+                    st: st,
+                    radius: 24,
+                    padding: const EdgeInsets.all(8),
+                    child: Row(children: [
+                      Cover(s: s, size: 46, radius: glass ? 12 : 3),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(s.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontWeight: FontWeight.w700)),
+                          Text(s.artist.isEmpty ? '—' : s.artist,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12)),
+                        ]),
+                      ),
+                      StreamBuilder<PlayerState>(
+                        stream: st.player.playerStateStream,
+                        builder: (context, snap) {
+                          final playing = snap.data?.playing ?? false;
+                          return IconButton(
+                            icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                            onPressed: () => st.togglePlay(),
+                          );
+                        },
+                      ),
+                      IconButton(icon: const Icon(Icons.skip_next), onPressed: () => st.next()),
+                    ]),
                   ),
-                  child: Row(children: [
-                    Cover(s: s, size: 46, radius: glass ? 12 : 3),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(s.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w700)),
-                        Text(s.artist.isEmpty ? '—' : s.artist,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 12)),
-                      ]),
-                    ),
-                    StreamBuilder<PlayerState>(
-                      stream: st.player.playerStateStream,
-                      builder: (context, snap) {
-                        final playing = snap.data?.playing ?? false;
-                        return IconButton(
-                          icon: Icon(playing ? Icons.pause : Icons.play_arrow),
-                          onPressed: () => st.togglePlay(),
-                        );
-                      },
-                    ),
-                    IconButton(icon: const Icon(Icons.skip_next), onPressed: () => st.next()),
-                  ]),
                 ),
               );
+            }
+          }
+
+          /// Navbar kaca dengan lensa yang bisa digeser; saat ditahan lensanya membesar.
+          class LensNav extends StatefulWidget {
+            final int index;
+            final ValueChanged<int> onChanged;
+            const LensNav({super.key, required this.index, required this.onChanged});
+
+            @override
+            State<LensNav> createState() => _LensNavState();
+          }
+
+          class _LensNavState extends State<LensNav> {
+            bool hold = false;
+            double? dragX;
+
+            static const _icons = [
+              Icons.home_rounded,
+              Icons.explore_rounded,
+              Icons.library_music_rounded,
+              Icons.favorite_rounded,
+            ];
+            static const _labels = ['Beranda', 'Jelajahi', 'Pustaka', 'Disukai'];
+
+            @override
+            Widget build(BuildContext context) {
+              final onSurface = Theme.of(context).colorScheme.onSurface;
+              return LayoutBuilder(builder: (context, box) {
+                final w = box.maxWidth;
+                final slot = w / 4;
+                final left = dragX != null
+                    ? (dragX! - slot / 2).clamp(0.0, w - slot).toDouble()
+                    : widget.index * slot;
+                final hot = ((left + slot / 2) / slot).floor().clamp(0, 3).toInt();
+                void release() {
+                  final i = dragX != null ? hot : widget.index;
+                  setState(() {
+                    hold = false;
+                    dragX = null;
+                  });
+                  widget.onChanged(i);
+                }
+
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapDown: (d) => setState(() {
+                    hold = true;
+                    dragX = d.localPosition.dx;
+                  }),
+                  onTapUp: (_) => release(),
+                  onTapCancel: () => setState(() {
+                    hold = false;
+                    dragX = null;
+                  }),
+                  onHorizontalDragStart: (d) => setState(() {
+                    hold = true;
+                    dragX = d.localPosition.dx;
+                  }),
+                  onHorizontalDragUpdate: (d) => setState(() => dragX = d.localPosition.dx),
+                  onHorizontalDragEnd: (_) => release(),
+                  onHorizontalDragCancel: () => setState(() {
+                    hold = false;
+                    dragX = null;
+                  }),
+                  child: SizedBox(
+                    height: 66,
+                    child: Stack(children: [
+                      AnimatedPositioned(
+                        duration: Duration(milliseconds: dragX != null ? 70 : 380),
+                        curve: Curves.easeOutBack,
+                        left: left,
+                        top: 5,
+                        bottom: 5,
+                        width: slot,
+                        child: AnimatedScale(
+                          scale: hold ? 1.18 : 1.0,
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeOut,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(30),
+                              color: Colors.white.withAlpha(hold ? 90 : 55),
+                              border: Border.all(color: Colors.white.withAlpha(140)),
+                              boxShadow: [
+                                BoxShadow(
+                                    color: Colors.black.withAlpha(hold ? 70 : 35),
+                                    blurRadius: hold ? 24 : 12,
+                                    offset: const Offset(0, 6)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Positioned.fill(
+                        child: Row(children: [
+                          for (int i = 0; i < 4; i++)
+                            Expanded(
+                              child: AnimatedScale(
+                                scale: (hold && i == hot) ? 1.22 : 1.0,
+                                duration: const Duration(milliseconds: 200),
+                                child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(_icons[i],
+                                          size: 24,
+                                          color: onSurface.withAlpha(i == hot ? 255 : 170)),
+                                      const SizedBox(height: 2),
+                                      Text(_labels[i],
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: i == hot ? FontWeight.w800 : FontWeight.w500,
+                                              color: onSurface.withAlpha(i == hot ? 255 : 170))),
+                                    ]),
+                              ),
+                            ),
+                        ]),
+                      ),
+                    ]),
+                  ),
+                );
+              });
             }
           }
           DART_EOF
@@ -900,6 +1031,7 @@ jobs:
           DART_EOF
           cat > lib/pages.dart <<'DART_EOF'
           import 'dart:math';
+          import 'dart:ui' show ImageFilter;
 
           import 'package:flutter/material.dart';
 
@@ -925,19 +1057,89 @@ jobs:
                     color: Theme.of(context).scaffoldBackgroundColor, child: child);
               }
               final h = (st.current == null ? 222 : hueOf(st.current!.id)).toDouble();
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 900),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      HSLColor.fromAHSL(1, h, .55, .30).toColor(),
-                      HSLColor.fromAHSL(1, (h + 45) % 360, .55, .09).toColor(),
-                    ],
+              final art = st.current?.art;
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Positioned.fill(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 900),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            HSLColor.fromAHSL(1, h, .55, .30).toColor(),
+                            HSLColor.fromAHSL(1, (h + 45) % 360, .55, .09).toColor(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (art != null)
+                    Positioned.fill(
+                      child: Opacity(
+                        opacity: .45,
+                        child: ImageFiltered(
+                          imageFilter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
+                          child: Image.network(art,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+                        ),
+                      ),
+                    ),
+                  child,
+                ],
+              );
+            }
+          }
+
+          /// Kartu kaca: buram, tembus pandang, dengan tepi bercahaya.
+          class Glass extends StatelessWidget {
+            final AppState st;
+            final Widget child;
+            final EdgeInsets padding;
+            final double radius;
+            const Glass({
+              super.key,
+              required this.st,
+              required this.child,
+              this.padding = const EdgeInsets.all(12),
+              this.radius = 24,
+            });
+
+            @override
+            Widget build(BuildContext context) {
+              final g = st.style == 'glass';
+              if (!g) {
+                return Container(
+                  padding: padding,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withAlpha(14),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                  ),
+                  child: child,
+                );
+              }
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(radius),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
+                  child: Container(
+                    padding: padding,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(radius),
+                      border: Border.all(color: Colors.white.withAlpha(70), width: 1),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Colors.white.withAlpha(52), Colors.white.withAlpha(14)],
+                      ),
+                    ),
+                    child: child,
                   ),
                 ),
-                child: child,
               );
             }
           }
@@ -948,22 +1150,10 @@ jobs:
             const Panel({super.key, required this.st, required this.child});
 
             @override
-            Widget build(BuildContext context) {
-              final g = st.style == 'glass';
-              return Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: g
-                      ? Colors.white.withAlpha(30)
-                      : Theme.of(context).colorScheme.primary.withAlpha(20),
-                  borderRadius: BorderRadius.circular(g ? 24 : 4),
-                  border: Border.all(
-                      color: g ? Colors.white.withAlpha(50) : Theme.of(context).dividerColor),
-                ),
-                child: child,
-              );
-            }
+            Widget build(BuildContext context) => SizedBox(
+                  width: double.infinity,
+                  child: Glass(st: st, padding: const EdgeInsets.all(16), child: child),
+                );
           }
 
           class SectionTitle extends StatelessWidget {
@@ -1190,7 +1380,7 @@ jobs:
                         ),
                       ]),
                       const SizedBox(height: 8),
-                      for (int i = 0; i < songs.length; i++) SongTile(st, songs, i),
+                      if (songs.isNotEmpty) Glass(st: st, padding: const EdgeInsets.symmetric(horizontal: 12), child: Column(children: [for (int i = 0; i < songs.length; i++) SongTile(st, songs, i)])),
                     ]),
                   ),
                 ),
@@ -1250,6 +1440,7 @@ jobs:
                       prefixIcon: const Icon(Icons.search),
                       hintText: 'Cari lagu, artis, album',
                       filled: true,
+                      fillColor: st.style == 'glass' ? Colors.white.withAlpha(30) : null,
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
                     ),
@@ -1359,6 +1550,7 @@ jobs:
                       prefixIcon: const Icon(Icons.search),
                       hintText: 'Cari judul atau artis',
                       filled: true,
+                      fillColor: st.style == 'glass' ? Colors.white.withAlpha(30) : null,
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
                     ),
@@ -1400,11 +1592,11 @@ jobs:
                     Padding(padding: const EdgeInsets.only(top: 12), child: Text(st.exploreMsg)),
                   if (local.isNotEmpty) ...[
                     SectionTitle(st, 'Di HP-mu'),
-                    for (int i = 0; i < local.length; i++) SongTile(st, local, i),
+                    if (local.isNotEmpty) Glass(st: st, padding: const EdgeInsets.symmetric(horizontal: 12), child: Column(children: [for (int i = 0; i < local.length; i++) SongTile(st, local, i)])),
                   ],
                   if (remote.isNotEmpty) ...[
                     SectionTitle(st, showResults ? 'Hasil Jamendo' : 'Sedang populer'),
-                    for (int i = 0; i < remote.length; i++) SongTile(st, remote, i),
+                    if (remote.isNotEmpty) Glass(st: st, padding: const EdgeInsets.symmetric(horizontal: 12), child: Column(children: [for (int i = 0; i < remote.length; i++) SongTile(st, remote, i)])),
                   ],
                 ],
               );
@@ -1447,6 +1639,7 @@ jobs:
                       prefixIcon: const Icon(Icons.search),
                       hintText: 'Cari di pustaka',
                       filled: true,
+                      fillColor: st.style == 'glass' ? Colors.white.withAlpha(30) : null,
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none),
                     ),
@@ -1457,7 +1650,7 @@ jobs:
                     const Padding(
                         padding: EdgeInsets.all(24),
                         child: Center(child: Text('Belum ada lagu di sini.'))),
-                  for (int i = 0; i < list.length; i++) SongTile(st, list, i),
+                  if (list.isNotEmpty) Glass(st: st, padding: const EdgeInsets.symmetric(horizontal: 12), child: Column(children: [for (int i = 0; i < list.length; i++) SongTile(st, list, i)])),
                 ],
               );
             }
@@ -1479,7 +1672,7 @@ jobs:
                     const Padding(
                         padding: EdgeInsets.all(24),
                         child: Center(child: Text('Tekan ♡ pada lagu untuk menyimpannya di sini.'))),
-                  for (int i = 0; i < st.favs.length; i++) SongTile(st, st.favs, i),
+                  if (st.favs.isNotEmpty) Glass(st: st, padding: const EdgeInsets.symmetric(horizontal: 12), child: Column(children: [for (int i = 0; i < st.favs.length; i++) SongTile(st, st.favs, i)])),
                 ],
               );
             }
@@ -1669,8 +1862,9 @@ jobs:
                                           }),
                                   ),
                                   const SizedBox(height: 16),
-                                  Row(children: [
-                                    Expanded(
+           Glass(st: st, padding: const EdgeInsets.fromLTRB(16, 8, 16, 4), radius: 28, child: Column(mainAxisSize: MainAxisSize.min, children: [
+           Row(children: [
+           Expanded(
                                       child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
@@ -1691,7 +1885,8 @@ jobs:
                                   ]),
                                   _seek(st),
                                   _controls(st, primary),
-                                  Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+           ])),
+           Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
                                     TextButton.icon(
                                       onPressed: () => setState(() => showLyrics = !showLyrics),
                                       icon: Icon(showLyrics ? Icons.album : Icons.lyrics_outlined),
