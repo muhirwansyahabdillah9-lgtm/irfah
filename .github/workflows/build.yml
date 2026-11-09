@@ -1756,8 +1756,13 @@ jobs:
                           context: context,
                           applicationName: 'Irfah',
                           applicationVersion: '1.0.0',
-                          applicationIcon: SizedBox(
-                              width: 48, height: 48, child: CustomPaint(painter: LogoPainter(1))),
+                          applicationIcon: Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                  color: const Color(0xFF0A0C10),
+                                  borderRadius: BorderRadius.circular(12)),
+                              child: CustomPaint(painter: LogoPainter(1))),
                           children: const [Text('Pemutar musik untuk HP.')],
                         ),
                       ),
@@ -2221,48 +2226,90 @@ jobs:
 
           double _c01(double v) => v < 0 ? 0 : (v > 1 ? 1 : v);
 
-          /// Logo Irfah: matahari terbit di atas ombak.
+          /// Logo Irfah: matahari bergaris tumbuh dari garis dasar, lalu ombak tergambar.
+          /// t = 0..1 (animasi). Pakai t = 1 untuk logo utuh.
           class LogoPainter extends CustomPainter {
             final double t;
             LogoPainter(this.t);
 
             @override
             void paint(Canvas c, Size s) {
-              final r = s.width / 2;
-              final disc = Rect.fromCircle(center: Offset(r, r), radius: r);
-              c.drawCircle(Offset(r, r), r, Paint()..color = const Color(0xFF1B2440));
+              final w = s.width;
+              final r = w * .34;
+              final cx = w / 2;
+              final base = s.height * .60;
+              final e = Curves.easeOutCubic.transform(_c01(t * 1.8));
+              final detail = _c01((t - .45) * 3);
+              final waveP = _c01((t - .6) * 3);
+
+              // matahari + strip (strip dipotong tembus)
+              c.saveLayer(Rect.fromLTWH(0, 0, w, s.height), Paint());
               c.save();
-              c.clipPath(Path()..addOval(disc));
-              final sunC = Offset(r, r * (1.5 - 0.6 * t));
-              c.drawCircle(
-                sunC,
-                r * .5,
+              c.translate(0, base);
+              c.scale(1, e <= 0 ? 0.001 : e);
+              c.translate(0, -base);
+              c.drawArc(
+                Rect.fromCircle(center: Offset(cx, base), radius: r),
+                math.pi,
+                math.pi,
+                true,
                 Paint()
-                  ..shader = const RadialGradient(
-                          colors: [Color(0xFFFFC857), Color(0xFFFF6B35)])
-                      .createShader(Rect.fromCircle(center: sunC, radius: r * .5)),
+                  ..shader = const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFF72D6F7), Color(0xFF4DB5E6)],
+                  ).createShader(Rect.fromLTRB(0, base - r, w, base)),
               );
-              final wave = Paint()
-                ..color = const Color(0xFF4FC3F7)
-                ..style = PaintingStyle.stroke
-                ..strokeWidth = r * .08
-                ..strokeCap = StrokeCap.round;
-              for (int i = 0; i < 3; i++) {
-                final y = r * (1.15 + i * .28);
-                final p = Path()..moveTo(0, y);
-                for (double x = 0; x <= s.width; x += 4) {
-                  p.lineTo(x, y + math.sin(x / s.width * 4 * math.pi + t * 6 + i) * r * .05);
-                }
-                c.drawPath(p, wave);
+              c.restore();
+              final cut = Paint()..blendMode = BlendMode.clear;
+              for (final f in const [
+                [.10, .045],
+                [.22, .035],
+                [.34, .025],
+              ]) {
+                final h = r * f[1] * detail;
+                c.drawRect(
+                    Rect.fromLTRB(0, base - r * f[0] - h / 2, w, base - r * f[0] + h / 2), cut);
               }
               c.restore();
+
+              // garis dasar
+              c.drawRRect(
+                RRect.fromRectAndRadius(
+                  Rect.fromLTWH(cx - r * 1.05, base + r * .06, r * 2.1, r * .045),
+                  Radius.circular(r * .02),
+                ),
+                Paint()..color = Colors.white.withAlpha((255 * detail).round()),
+              );
+
+              // ombak
+              final wp = Path();
+              final x0 = cx - r * .28;
+              final len = r * .56 * waveP;
+              for (double i = 0; i <= len; i += 2) {
+                final y = base + r * .30 + math.sin(i / (r * .56) * 4 * math.pi) * r * .05;
+                if (i == 0) {
+                  wp.moveTo(x0, y);
+                } else {
+                  wp.lineTo(x0 + i, y);
+                }
+              }
+              c.drawPath(
+                wp,
+                Paint()
+                  ..color = Colors.white
+                  ..style = PaintingStyle.stroke
+                  ..strokeWidth = r * .05
+                  ..strokeCap = StrokeCap.round,
+              );
             }
 
             @override
             bool shouldRepaint(LogoPainter o) => o.t != t;
           }
 
-          /// Animasi pembuka: logo muncul, matahari naik, nama aplikasi memudar masuk.
+          /// Animasi pembuka: matahari naik, ombak tergambar, nama memudar masuk,
+          /// lalu layar memudar ke Beranda.
           class SplashPage extends StatefulWidget {
             final Widget next;
             const SplashPage({super.key, required this.next});
@@ -2275,10 +2322,10 @@ jobs:
             @override
             void initState() {
               super.initState();
-              Future.delayed(const Duration(milliseconds: 2800), () {
+              Future.delayed(const Duration(milliseconds: 3300), () {
                 if (!mounted) return;
                 Navigator.of(context).pushReplacement(PageRouteBuilder(
-                  transitionDuration: const Duration(milliseconds: 600),
+                  transitionDuration: const Duration(milliseconds: 700),
                   pageBuilder: (_, __, ___) => widget.next,
                   transitionsBuilder: (_, a, __, child) =>
                       FadeTransition(opacity: a, child: child),
@@ -2289,41 +2336,24 @@ jobs:
             @override
             Widget build(BuildContext context) {
               return Scaffold(
-                backgroundColor: const Color(0xFF0E1626),
+                backgroundColor: const Color(0xFF0A0C10),
                 body: Center(
                   child: TweenAnimationBuilder<double>(
                     tween: Tween(begin: 0, end: 1),
-                    duration: const Duration(milliseconds: 2400),
-                    curve: Curves.easeOutCubic,
+                    duration: const Duration(milliseconds: 2600),
                     builder: (context, t, _) => Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Opacity(
-                          opacity: _c01(t * 2),
-                          child: Transform.scale(
-                            scale: .75 + .25 * t,
-                            child: SizedBox(
-                              width: 140,
-                              height: 140,
-                              child: CustomPaint(painter: LogoPainter(t)),
-                            ),
-                          ),
+                        SizedBox(
+                          width: 200,
+                          height: 150,
+                          child: CustomPaint(painter: LogoPainter(t)),
                         ),
-                        const SizedBox(height: 22),
                         Opacity(
-                          opacity: _c01((t - .5) * 2),
+                          opacity: _c01((t - .7) * 3.3),
                           child: const Text('Irfah',
                               style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 34,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 3)),
-                        ),
-                        const SizedBox(height: 4),
-                        Opacity(
-                          opacity: _c01((t - .7) * 3),
-                          child: const Text('Pemutar musik untuk HP',
-                              style: TextStyle(color: Colors.white70)),
+                                  color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800)),
                         ),
                       ],
                     ),
@@ -2403,6 +2433,43 @@ jobs:
           }
           GRADLE
           cat ~/.gradle/init.d/force-sdk.gradle
+
+      - name: Buat ikon Irfah
+        continue-on-error: true
+        run: |
+          pip install pillow -q
+          python3 - <<'PY'
+          import math, os
+          from PIL import Image, ImageDraw
+
+          def icon(n):
+              S = n * 4
+              im = Image.new('RGBA', (S, S), (10, 12, 16, 255))
+              d = ImageDraw.Draw(im)
+              cx, base, r = S / 2, S * .62, S * .30
+              sun = Image.new('RGBA', (S, S), (0, 0, 0, 0))
+              sd = ImageDraw.Draw(sun)
+              for y in range(int(base - r), int(base)):
+                  k = (y - (base - r)) / r
+                  sd.line([(0, y), (S, y)], fill=(int(114 - 37 * k), int(214 - 33 * k), int(247 - 17 * k), 255))
+              mask = Image.new('L', (S, S), 0)
+              md = ImageDraw.Draw(mask)
+              md.pieslice([cx - r, base - r, cx + r, base + r], 180, 360, fill=255)
+              for f, t in [(.10, .045), (.22, .035), (.34, .025)]:
+                  y = base - r * f
+                  md.rectangle([0, y - r * t / 2, S, y + r * t / 2], fill=0)
+              im.paste(sun, (0, 0), mask)
+              d.rectangle([cx - r * 1.05, base + r * .06, cx + r * 1.05, base + r * .10], fill=(255, 255, 255, 255))
+              pts = [(cx - r * .28 + i, base + r * .30 + math.sin(i / (r * .56) * 4 * math.pi) * r * .05) for i in range(int(r * .56))]
+              d.line(pts, fill=(255, 255, 255, 255), width=max(2, int(r * .045)), joint='curve')
+              return im.resize((n, n), Image.LANCZOS)
+
+          for folder, n in [('mdpi', 48), ('hdpi', 72), ('xhdpi', 96), ('xxhdpi', 144), ('xxxhdpi', 192)]:
+              d = 'android/app/src/main/res/mipmap-' + folder
+              os.makedirs(d, exist_ok=True)
+              icon(n).save(d + '/ic_launcher.png')
+              print('ikon', folder)
+          PY
 
       - run: flutter pub get
 
